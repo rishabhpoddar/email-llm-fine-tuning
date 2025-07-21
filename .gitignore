@@ -2,3 +2,5 @@
 venv/
 gmail_credentials.json
 token.json
+fetching_state.json.tmp
+fetching_state.json

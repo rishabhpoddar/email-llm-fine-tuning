@@ -35,3 +35,5 @@ To fetch emails, run the following command:
 ```bash
 python create_data_set_from_gmail.py
 ```
+
+This will create a file called `fetching_state.json` in the repo, which will contain all the emails fetched so far, organised by thread ID. This is a long running process, and if it crashes, it can be restarted and it will resume from where it left off.
