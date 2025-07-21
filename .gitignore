@@ -1,0 +1,4 @@
+.env
+venv/
+gmail_credentials.json
+token.json
