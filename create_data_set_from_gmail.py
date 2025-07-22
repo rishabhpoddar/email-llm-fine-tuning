@@ -14,11 +14,12 @@ last_page_token = None
 
 class Email:
     # date is in MS since epoch
-    def __init__(self, id: str, from_user: str, body: str, date: int):
+    def __init__(self, id: str, from_user: str, body: str, date: int, subject: str):
         self.id = id
         self.from_user = from_user
         self.body = body
         self.date = date
+        self.subject = subject
 
     def to_dict(self):
         return {
@@ -26,6 +27,7 @@ class Email:
             "body": self.body,
             "date": self.date,
             "from_user": self.from_user,
+            "subject": self.subject,
         }
 
     @classmethod
@@ -35,6 +37,7 @@ class Email:
             body=data["body"],
             date=data["date"],
             from_user=data["from_user"],
+            subject=data["subject"],
         )
 
 
@@ -99,6 +102,15 @@ def get_message_body(message):
 def get_message_date(message):
     """Extract the date from a Gmail message in milliseconds since epoch."""
     return int(message["internalDate"])
+
+
+def get_message_subject(message):
+    """Extract the subject from a Gmail message."""
+    headers = message["payload"]["headers"]
+    for header in headers:
+        if header["name"].lower() == "subject":
+            return header["value"]
+    return "unknown"
 
 
 def get_message_from(message):
@@ -263,10 +275,14 @@ def main():
                     body = get_message_body(message)
                     date = get_message_date(message)
                     from_user = get_message_from(message)
-
+                    subject = get_message_subject(message)
                     # Create Email object
                     email_obj = Email(
-                        id=msg["id"], from_user=from_user, body=body, date=date
+                        id=msg["id"],
+                        from_user=from_user,
+                        body=body,
+                        date=date,
+                        subject=subject,
                     )
 
                     # Add to thread and sort immediately
