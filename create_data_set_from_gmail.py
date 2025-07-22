@@ -5,11 +5,12 @@ from typing import List, Dict, Set
 import json
 import fcntl
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
 
 # If modifying scopes, delete token.json
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
-EMAILS_BATCH_SIZE = 100
-MAX_WORKERS = 10  # Number of parallel threads for fetching message details
+EMAILS_BATCH_SIZE = int(os.getenv("EMAIL_FETCHING_BATCH_SIZE"))
+MAX_WORKERS = int(os.getenv("EMAIL_FETCHING_MAX_PARALLEL_WORKERS"))
 
 last_page_token = None
 

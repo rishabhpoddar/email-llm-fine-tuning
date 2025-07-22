@@ -7,6 +7,8 @@
 pip install -r requirements.txt
 ```
 
+Copy `.env.example` to `.env` and fill in the required variables.
+
 ### Instructions on creating Gmail API credentials
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
