@@ -6,6 +6,9 @@ import json
 import fcntl
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
+import dotenv
+
+dotenv.load_dotenv()
 
 # If modifying scopes, delete token.json
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]

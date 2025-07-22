@@ -48,5 +48,6 @@ To create the data set, run the following command:
 python create_data_set_from_fetched_emails.py
 ```
 
-This will create a file called `data_set.json` in the repo from the contents of the `fetching_state.json` file.
+- Make sure to set the value for `EMAIL_ADDRESS_TO_TRAIN_ON` and `EMAIL_ENDING_SIGNATURE_OF_OUTPUT_EMAIL` in the `.env` file before running the script. 
+- This will create a file called `dataset.jsonl` in the repo from the contents of the `fetching_state.json` file.
 

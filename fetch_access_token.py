@@ -1,6 +1,9 @@
 import os.path
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
+import dotenv
+
+dotenv.load_dotenv()
 
 # If modifying scopes, delete token.json
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
