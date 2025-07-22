@@ -4,10 +4,12 @@ from googleapiclient.discovery import build
 from typing import List, Dict, Set
 import json
 import fcntl
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # If modifying scopes, delete token.json
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EMAILS_BATCH_SIZE = 100
+MAX_WORKERS = 10  # Number of parallel threads for fetching message details
 
 last_page_token = None
 
@@ -47,6 +49,10 @@ class EmailThread:
         self.emails = sorted(emails, key=lambda x: x.date)
 
     def add_email(self, email: Email):
+        # if the email is already in the thread, don't add it
+        if email.id in [e.id for e in self.emails]:
+            return
+        print(len(self.emails), self.thread_id)
         self.emails.append(email)
         self.emails.sort(key=lambda x: x.date)
 
@@ -186,6 +192,57 @@ def load_state_from_json_file():
             seen_email_ids = set()
 
 
+def fetch_single_message(
+    creds,
+    msg_id,
+    seen_email_ids,
+    pagination_token_that_was_loaded_from_file,
+    last_page_token,
+):
+    """Fetch a single message and return (Email object, thread_id) tuple or special string values."""
+    if (
+        msg_id in seen_email_ids
+        and pagination_token_that_was_loaded_from_file != last_page_token
+    ):
+        # We have pagination_token_that_was_loaded_from_file != last_page_token condition because
+        # if we did not have it, then we may miss out on certain emails that were not saved in the current
+        # page from a previous run. For example, if in the previous run, pagination token was p1, and we saved
+        # 5 out of the 100 emails for that page, then in the next run, if we do not have this condition, we may
+        # quit before saving the remaining 95 emails. Now, having this condition means that we will not stop
+        # for the current page, as long as the pagination token is a different one from the one that was last
+        # used from the previous run. So this way, in the next run, after we paginate through all 100 emails of the
+        # current page, and then on the next page, we encounter an email that we have already seen, then we will
+        # can be sure that we have seen all emails in and before that page (assuming the BATCH SIZE has not been reduced compared to previous runs).
+        return "stop_early"  # Special return value to indicate continue
+
+    seen_email_ids.add(msg_id)
+
+    # Create a separate Gmail service instance for this thread to avoid SSL conflicts
+    service = build("gmail", "v1", credentials=creds)
+
+    # Get full message details
+    try:
+        message = service.users().messages().get(userId="me", id=msg_id).execute()
+        # Extract thread ID, body, and date
+        thread_id = message["threadId"]
+        body = get_message_body(message)
+        date = get_message_date(message)
+        from_user = get_message_from(message)
+        subject = get_message_subject(message)
+        # Create Email object
+        email_obj = Email(
+            id=msg_id,
+            from_user=from_user,
+            body=body,
+            date=date,
+            subject=subject,
+        )
+        return (email_obj, thread_id)
+    except Exception as e:
+        print(f"Error getting message {msg_id}: {e}")
+        return None
+
+
 def main():
     global threads_dict, seen_email_ids, last_page_token, EMAILS_BATCH_SIZE
     creds = None
@@ -235,76 +292,53 @@ def main():
                 break
 
             # Process each message in this batch
-            for msg in messages:
-                try:
+            email_thread_pairs = []  # List of (email_obj, thread_id) tuples
 
-                    if msg["id"] in seen_email_ids:
-                        if (
-                            pagination_token_that_was_loaded_from_file
-                            == last_page_token
-                        ):
-                            # We have this because if we kill the process during the loop, the finally block is run,
-                            # which then saves the current state, including the current pagination token in the file.
-                            # Now if we rerun the process, it will pick up the current pagination token, and refetch some of the existing email,
-                            # which will have emails we may have already seen again. So to prevent the program from stopping in this case,
-                            # we do not stop if the current pagination token is the one that was loaded from the file on process start.
-                            # On the other hand, if we encounter a message that was have already seen, but the pagination token is not the one
-                            # from the file, then we can be sure that we have seen all emails before this one, and we can stop the process (assuming the BATCH SIZE has not been reduced compared to previous runs).
-                            continue
+            # Create a list of message IDs to process
+            message_ids = [msg["id"] for msg in messages]
 
-                        # this means we have already seen this email before, and therefore all emails
-                        # before this one as well (since we are iterating in order from newest to oldest)
+            # Use ThreadPoolExecutor to fetch messages in parallel
+            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                # Submit all fetch tasks
+                future_to_msg_id = {
+                    executor.submit(
+                        fetch_single_message,
+                        creds,  # Pass creds to the function
+                        msg_id,
+                        seen_email_ids,
+                        pagination_token_that_was_loaded_from_file,
+                        last_page_token,
+                    ): msg_id
+                    for msg_id in message_ids
+                }
+
+                # Process completed futures
+                for future in as_completed(future_to_msg_id):
+                    result = future.result()
+                    if result == "stop_early":
                         print(
                             f"Stopping early because we have already seen the past emails before."
                         )
                         stop_early = True
                         break
+                    elif result is not None:  # Valid (Email object, thread_id) tuple
+                        email_obj, thread_id = result
+                        email_thread_pairs.append((email_obj, thread_id))
 
-                    seen_email_ids.add(msg["id"])
-
-                    # Get full message details
-                    message = (
-                        service.users()
-                        .messages()
-                        .get(userId="me", id=msg["id"])
-                        .execute()
+            # Process all successfully fetched emails
+            for email_obj, thread_id in email_thread_pairs:
+                # Add to thread
+                if thread_id in threads_dict:
+                    threads_dict[thread_id].add_email(email_obj)
+                else:
+                    threads_dict[thread_id] = EmailThread(
+                        thread_id=thread_id, emails=[email_obj]
                     )
 
-                    # Extract thread ID, body, and date
-                    thread_id = message["threadId"]
-                    body = get_message_body(message)
-                    date = get_message_date(message)
-                    from_user = get_message_from(message)
-                    subject = get_message_subject(message)
-                    # Create Email object
-                    email_obj = Email(
-                        id=msg["id"],
-                        from_user=from_user,
-                        body=body,
-                        date=date,
-                        subject=subject,
-                    )
+                total_messages_processed += 1
 
-                    # Add to thread and sort immediately
-                    if thread_id in threads_dict:
-                        threads_dict[thread_id].add_email(email_obj)
-                    else:
-                        threads_dict[thread_id] = EmailThread(
-                            thread_id=thread_id, emails=[email_obj]
-                        )
-
-                    total_messages_processed += 1
-
-                    if total_messages_processed % 50 == 0:
-                        print(
-                            f"Processed {total_messages_processed} messages so far..."
-                        )
-
-                except Exception as e:
-                    print(
-                        f"Error processing message {total_messages_processed + 1}: {e}"
-                    )
-                    continue
+                if total_messages_processed % 50 == 0:
+                    print(f"Processed {total_messages_processed} messages so far...")
 
             print(f"Processed {total_messages_processed} messages so far...")
 
