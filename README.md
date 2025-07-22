@@ -35,7 +35,18 @@ This will write a `token.json` file in the repo, which will be used by the other
 To fetch emails, run the following command:
 
 ```bash
-python create_data_set_from_gmail.py
+python fetch_from_gmail.py
 ```
 
 This will create a file called `fetching_state.json` in the repo, which will contain all the emails fetched so far, organised by thread ID. This is a long running process, and if it crashes, it can be restarted and it will resume from where it left off.
+
+## 4) Creating the data set
+
+To create the data set, run the following command:
+
+```bash
+python create_data_set_from_fetched_emails.py
+```
+
+This will create a file called `data_set.json` in the repo from the contents of the `fetching_state.json` file.
+
