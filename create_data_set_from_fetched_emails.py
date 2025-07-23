@@ -48,7 +48,7 @@ def strip_html(raw_html: str) -> str:
 
 
 EMAIL_SEPARATOR = (
-    "\n\n--PREV_EMAIL_IN_THREAD--\n\n"  # separates individual emails inside the prompt
+    "\n\n--NEXT_EMAIL_IN_THREAD--\n\n"  # separates individual emails inside the prompt
 )
 
 
