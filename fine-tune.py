@@ -4,7 +4,7 @@ Input file: jsonl with
     {"input": "<thread context>", "output": "<author's reply>"}
 """
 
-import argparse, json, os
+import os
 from typing import Dict
 
 import torch
@@ -22,53 +22,63 @@ from bitsandbytes import BitsAndBytesConfig
 
 
 # ----------  Prompt template ----------
-def make_example(example: Dict[str, str], tokenizer):
-    """Return {"input_ids": …, "labels": …} or None if too long."""
-    sep = "\n\n---\n\n"
-    prompt = f"<s>[EMAIL THREAD]\n{example['input']}\n\n[YOUR REPLY]\n"
-    reply = example["output"] + tokenizer.eos_token
+def make_example_batch(examples: Dict[str, list], tokenizer):
+    """Process a batch of examples. Return {"input_ids": […], "labels": […]} for the batch."""
+    batch_input_ids = []
+    batch_labels = []
 
-    # Tokenise separately to measure length
-    prompt_ids = tokenizer(prompt, add_special_tokens=False).input_ids
-    reply_ids = tokenizer(reply, add_special_tokens=False).input_ids
+    for i in range(len(examples["input"])):
+        prompt = f"<s>[EMAIL THREAD]\n{examples['input'][i]}\n\n[YOUR REPLY]\n"
+        reply = examples["output"][i] + tokenizer.eos_token
 
-    # Build labels: mask prompt tokens to -100 so loss only on reply
-    input_ids = prompt_ids + reply_ids
-    labels = [-100] * len(prompt_ids) + reply_ids
-    return {"input_ids": input_ids, "labels": labels}
+        # Tokenise separately to measure length
+        prompt_ids = tokenizer(prompt, add_special_tokens=False).input_ids
+        reply_ids = tokenizer(reply, add_special_tokens=False).input_ids
+
+        # here we mask the email thread tokens to -100, so it does not learn to predict those,
+        # and instead, just learns from the expected output.
+        input_ids = prompt_ids + reply_ids
+        labels = [-100] * len(prompt_ids) + reply_ids
+
+        batch_input_ids.append(input_ids)
+        batch_labels.append(labels)
+
+    return {"input_ids": batch_input_ids, "labels": batch_labels}
 
 
 # ----------  Main ----------
 def main():
     accelerator = Accelerator()
-    device = accelerator.device
 
-    # 1. Tokeniser
-    tok = AutoTokenizer.from_pretrained(
-        os.getenv("MODEL_NAME"), use_fast=True, trust_remote_code=True
+    # Tokeniser
+    tokenizer = AutoTokenizer.from_pretrained(
+        os.getenv("MODEL_NAME"), trust_remote_code=True
     )
-    tok.pad_token = tok.eos_token
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
 
-    # 2. Model w/ 4-bit quant
+    # We do this cause otherwise it will require a lot of memory
     qconf = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_compute_dtype=torch.float16,
     )
+
     model = AutoModelForCausalLM.from_pretrained(
         os.getenv("MODEL_NAME"),
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float16,
         quantization_config=qconf,
         device_map="auto",
         trust_remote_code=True,
     )
 
-    # 3. LoRA adapter
+    # LoRA adapter
     lora_cfg = LoraConfig(
-        r=64,
-        lora_alpha=16,
-        lora_dropout=0.05,
+        r=int(os.getenv("LORA_RANK")),
+        lora_alpha=int(os.getenv("LORA_ALPHA")),
+        lora_dropout=float(os.getenv("LORA_DROPOUT")),
+        use_rslora=True,
         target_modules=[
             "q_proj",
             "k_proj",
@@ -82,49 +92,50 @@ def main():
     model = get_peft_model(model, lora_cfg)
     model.print_trainable_parameters()
 
-    # 4. Dataset ↦ tokenised
+    # Dataset -> tokenised
     raw_ds = load_dataset("json", data_files="dataset.jsonl", split="train")
 
     def _proc(ex):
-        return make_example(ex, tok)
+        return make_example_batch(ex, tokenizer)
 
-    tokenised = raw_ds.map(_proc, remove_columns=raw_ds.column_names)
-    tokenised = tokenised.filter(lambda e: e is not None)  # drop None
+    tokenised = raw_ds.map(
+        _proc, batched=True, batch_size=1000, remove_columns=raw_ds.column_names
+    )
+    # Filter is not needed anymore since we're not returning None values in batched processing
 
-    # 5. Training args
+    # Training args
     targs = TrainingArguments(
         output_dir="model_results",
-        num_train_epochs=os.getenv("EPOCHS"),
-        per_device_train_batch_size=os.getenv("BATCH_SIZE"),
-        gradient_accumulation_steps=os.getenv("GRAD_ACCUM"),
-        learning_rate=os.getenv("LEARNING_RATE"),
+        num_train_epochs=int(os.getenv("EPOCHS")),
+        per_device_train_batch_size=int(os.getenv("BATCH_SIZE")),
+        gradient_accumulation_steps=int(os.getenv("GRAD_ACCUM")),
+        learning_rate=float(os.getenv("LEARNING_RATE")),
         bf16=True,
         logging_steps=25,
         save_strategy="epoch",
         report_to="none",
     )
 
-    # 6. Trainer (TRL’s SFTTrainer hides label-shift boilerplate)
     data_collator = DataCollatorForLanguageModeling(
-        tok, mlm=False, pad_to_multiple_of=8
+        tokenizer, mlm=False, pad_to_multiple_of=8
     )
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tok,
+        tokenizer=tokenizer,
         train_dataset=tokenised,
         args=targs,
         data_collator=data_collator,
     )
 
-    # 7. Go!
+    # Run the training
     trainer.train()
     accelerator.wait_for_everyone()
 
-    # 8. Save LoRA adapter + tokenizer
-    trainer.model.save_pretrained(args.output_dir)
-    tok.save_pretrained(args.output_dir)
+    # Save LoRA adapter + tokenizer
+    trainer.model.save_pretrained("model_results")
+    tokenizer.save_pretrained("model_results")
     if accelerator.is_main_process:
-        print(f"🎉  LoRA adapter saved to {args.output_dir}")
+        print(f"🎉  LoRA adapter saved to model_results")
 
 
 if __name__ == "__main__":
