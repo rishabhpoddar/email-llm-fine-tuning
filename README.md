@@ -52,31 +52,6 @@ python create_data_set_from_fetched_emails.py
 
 ## 5) Running the fine-tuning
 
-Before we do the fine-tuning, run the following command:
-
-```bash
-accelerate config
-```
-
-The following are the answers I gave to train on my local machine (mac, m1 pro) with a CPU only:
-
-```
-In which compute environment are you running?
-This machine
----------------------------------------------------------------------------------------------------------------------------------------
-Which type of machine are you using?
-No distributed training
-Do you want to run your training on CPU only (even if a GPU / Apple Silicon / Ascend NPU device is available)? [yes/NO]:yes
-Do you want to use Intel PyTorch Extension (IPEX) to speed up training on CPU/XPU? [yes/NO]:no
-Do you wish to optimize your script with torch dynamo?[yes/NO]:no
-Do you want to use DeepSpeed? [yes/NO]: no
----------------------------------------------------------------------------------------------------------------------------------------
-Do you wish to use mixed precision?
-no
-```
-
-You can decide to answer them differently, but the `fine-tuning.py` script might need to change a bit.
-
 To run the fine-tuning, run the following command:
 
 ```bash

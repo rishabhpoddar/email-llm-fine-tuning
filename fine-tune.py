@@ -16,9 +16,10 @@ from transformers import (
     DataCollatorForLanguageModeling,
 )
 from peft import LoraConfig, get_peft_model
-from accelerate import Accelerator
 from trl import SFTTrainer
-from bitsandbytes import BitsAndBytesConfig
+import dotenv
+
+dotenv.load_dotenv()
 
 
 # ----------  Prompt template ----------
@@ -48,8 +49,6 @@ def make_example_batch(examples: Dict[str, list], tokenizer):
 
 # ----------  Main ----------
 def main():
-    accelerator = Accelerator()
-
     # Tokeniser
     tokenizer = AutoTokenizer.from_pretrained(
         os.getenv("MODEL_NAME"), trust_remote_code=True
@@ -57,18 +56,9 @@ def main():
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
 
-    # We do this cause otherwise it will require a lot of memory
-    qconf = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=torch.float16,
-    )
-
     model = AutoModelForCausalLM.from_pretrained(
         os.getenv("MODEL_NAME"),
         torch_dtype=torch.float16,
-        quantization_config=qconf,
         device_map="auto",
         trust_remote_code=True,
     )
@@ -101,7 +91,6 @@ def main():
     tokenised = raw_ds.map(
         _proc, batched=True, batch_size=1000, remove_columns=raw_ds.column_names
     )
-    # Filter is not needed anymore since we're not returning None values in batched processing
 
     # Training args
     targs = TrainingArguments(
@@ -110,9 +99,13 @@ def main():
         per_device_train_batch_size=int(os.getenv("BATCH_SIZE")),
         gradient_accumulation_steps=int(os.getenv("GRAD_ACCUM")),
         learning_rate=float(os.getenv("LEARNING_RATE")),
-        bf16=True,
-        logging_steps=25,
-        save_strategy="epoch",
+        fp16=True,
+        logging_steps=int(os.getenv("TRAINING_LOGGING_STEPS")),
+        save_strategy="steps",  # Save at regular step intervals
+        save_steps=int(os.getenv("TRAINING_SAVE_STEPS")),
+        save_total_limit=int(os.getenv("TRAINING_SAVE_TOTAL_LIMIT")),
+        load_best_model_at_end=False,  # Don't need best model for this use case
+        resume_from_checkpoint=True,  # Automatically resume if checkpoint exists
         report_to="none",
     )
 
@@ -129,13 +122,9 @@ def main():
 
     # Run the training
     trainer.train()
-    accelerator.wait_for_everyone()
-
-    # Save LoRA adapter + tokenizer
     trainer.model.save_pretrained("model_results")
     tokenizer.save_pretrained("model_results")
-    if accelerator.is_main_process:
-        print(f"🎉  LoRA adapter saved to model_results")
+    print("🎉  LoRA adapter saved to model_results")
 
 
 if __name__ == "__main__":
