@@ -1,9 +1,3 @@
-"""LoRA fine-tuning for Llama-4-Scout 17B on e-mail reply data.
-
-Input file: jsonl with
-    {"input": "<thread context>", "output": "<author's reply>"}
-"""
-
 import os
 from typing import Dict
 
