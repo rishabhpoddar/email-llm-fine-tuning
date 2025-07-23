@@ -7,6 +7,9 @@ import fcntl
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import dotenv
+from base64 import urlsafe_b64decode
+from email_reply_parser import EmailReplyParser
+from bs4 import BeautifulSoup
 
 dotenv.load_dotenv()
 
@@ -56,7 +59,6 @@ class EmailThread:
         # if the email is already in the thread, don't add it
         if email.id in [e.id for e in self.emails]:
             return
-        print(len(self.emails), self.thread_id)
         self.emails.append(email)
         self.emails.sort(key=lambda x: x.date)
 
@@ -77,36 +79,47 @@ threads_dict: Dict[str, EmailThread] = {}
 seen_email_ids: Set[str] = set()
 
 
+def _clean_plain(text: str) -> str:
+    """Return only the new part of a plain-text message."""
+    # library handles signatures & quoting reliably
+    return EmailReplyParser.parse_reply(text).strip()
+
+
+def _clean_html(html: str) -> str:
+    """Remove quoted history from a Gmail / generic HTML body."""
+    soup = BeautifulSoup(html, "html.parser")
+
+    # common quote containers across clients
+    selectors = [
+        "blockquote",
+        "div.gmail_quote",
+        "div.gmail_extra",
+        "table.gmail_quote",
+        "div.yahoo_quoted",
+    ]
+    for sel in selectors:
+        for node in soup.select(sel):
+            node.decompose()
+
+    return soup.get_text("\n", strip=True)
+
+
 def get_message_body(message):
-    """Extract the body text from a Gmail message."""
-    body = ""
+    """Extract only the author’s fresh text from a Gmail message."""
+    for part in message["payload"].get("parts", [message["payload"]]):
+        mime = part["mimeType"]
+        body_data = part["body"].get("data")
+        if not body_data:
+            continue
 
-    if "parts" in message["payload"]:
-        for part in message["payload"]["parts"]:
-            if part["mimeType"] == "text/plain":
-                if "data" in part["body"]:
-                    body = base64.urlsafe_b64decode(part["body"]["data"]).decode(
-                        "utf-8"
-                    )
-                    break
-            elif part["mimeType"] == "text/html" and not body:
-                if "data" in part["body"]:
-                    body = base64.urlsafe_b64decode(part["body"]["data"]).decode(
-                        "utf-8"
-                    )
-    else:
-        if message["payload"]["mimeType"] == "text/plain":
-            if "data" in message["payload"]["body"]:
-                body = base64.urlsafe_b64decode(
-                    message["payload"]["body"]["data"]
-                ).decode("utf-8")
-        elif message["payload"]["mimeType"] == "text/html":
-            if "data" in message["payload"]["body"]:
-                body = base64.urlsafe_b64decode(
-                    message["payload"]["body"]["data"]
-                ).decode("utf-8")
+        decoded = urlsafe_b64decode(body_data).decode("utf-8", errors="ignore")
 
-    return body
+        if mime == "text/plain":
+            return _clean_plain(decoded)
+        if mime == "text/html":
+            return _clean_html(decoded)
+
+    return ""  # fallback – no recognised body part
 
 
 def get_message_date(message):
@@ -340,9 +353,6 @@ def main():
                     )
 
                 total_messages_processed += 1
-
-                if total_messages_processed % 50 == 0:
-                    print(f"Processed {total_messages_processed} messages so far...")
 
             print(f"Processed {total_messages_processed} messages so far...")
 

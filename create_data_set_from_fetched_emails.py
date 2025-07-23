@@ -47,7 +47,9 @@ def strip_html(raw_html: str) -> str:
     return h.handle(raw_html)
 
 
-EMAIL_SEPARATOR = "\n\n---\n\n"  # separates individual emails inside the prompt
+EMAIL_SEPARATOR = (
+    "\n\n--PREV_EMAIL_IN_THREAD--\n\n"  # separates individual emails inside the prompt
+)
 
 
 def serialise_input_email(email: dict) -> str:
@@ -70,8 +72,6 @@ def serialise_input_email(email: dict) -> str:
 def serialise_output_email(email: dict) -> str:
     body = email["body"] or ""
     body = strip_html(body)
-    if os.getenv("EMAIL_ENDING_SIGNATURE_OF_OUTPUT_EMAIL"):
-        body = body.split(os.getenv("EMAIL_ENDING_SIGNATURE_OF_OUTPUT_EMAIL"))[0]
     return body
 
 
