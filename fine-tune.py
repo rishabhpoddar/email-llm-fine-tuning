@@ -8,10 +8,10 @@ from transformers import (
     AutoModelForCausalLM,
     TrainingArguments,
     Trainer,
-    default_data_collator,
 )
 from peft import LoraConfig, get_peft_model
 import dotenv
+from torch.nn.utils.rnn import pad_sequence
 
 dotenv.load_dotenv()
 
@@ -22,23 +22,17 @@ torch.set_default_device("cpu")
 
 # ----------  Prompt template ----------
 def make_example(example: Dict[str, str], tokenizer):
+    # build prompt and reply strings
     prompt = f"<s>[EMAIL THREAD]\n{example['input']}\n\n[YOUR REPLY]\n"
     reply = example["output"] + tokenizer.eos_token
 
+    # tokenize
     prompt_ids = tokenizer(prompt, add_special_tokens=False).input_ids
     reply_ids = tokenizer(reply, add_special_tokens=False).input_ids
 
+    # concat and build labels
     input_ids = prompt_ids + reply_ids
     labels = [-100] * len(prompt_ids) + reply_ids
-
-    max_len = int(os.getenv("MODEL_CONTEXT_LENGTH"))
-
-    if len(input_ids) > max_len:
-        input_ids = input_ids[:max_len]
-        labels = labels[:max_len]
-
-    input_ids += [tokenizer.pad_token_id] * (max_len - len(input_ids))
-    labels += [-100] * (max_len - len(labels))
 
     return {"input_ids": input_ids, "labels": labels}
 
@@ -106,18 +100,40 @@ def main():
         label_names=["labels"],
     )
 
+    def collate_fn(batch):
+        # batch is a list of dicts: {"input_ids": [...], "labels": [...]}
+        input_tensors = [
+            torch.tensor(ex["input_ids"], dtype=torch.long) for ex in batch
+        ]
+        label_tensors = [torch.tensor(ex["labels"], dtype=torch.long) for ex in batch]
+
+        # pad to the longest in this batch
+        input_ids = pad_sequence(
+            input_tensors, batch_first=True, padding_value=tokenizer.pad_token_id
+        )
+        labels = pad_sequence(label_tensors, batch_first=True, padding_value=-100)
+        attention_mask = input_ids.ne(tokenizer.pad_token_id)
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+        }
+
+    data_collator = collate_fn
+
     trainer = Trainer(
         model=model,
         train_dataset=tokenised,
         args=targs,
-        data_collator=default_data_collator,
+        data_collator=data_collator,
     )
 
     # Run the training
     trainer.train()
     trainer.model.save_pretrained("model_result")
     tokenizer.save_pretrained("model_result")
-    print("🎉  LoRA adapter saved to model_result")
+    print("LoRA adapter saved to model_result")
 
 
 if __name__ == "__main__":
