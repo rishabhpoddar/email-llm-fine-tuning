@@ -2,6 +2,10 @@
 
 ## 1) Installation process
 
+### Requirements
+
+Need python 3.10 or higher.
+
 ### Install dependencies
 ```bash
 pip install -r requirements.txt
@@ -54,6 +58,7 @@ python create_data_set_from_fetched_emails.py
 
 If you are fine-tuning a model which has gated access, you need to first go the hugging face page for that model and accept the terms and conditions. Once you have access to the model, you will have to:
 - Clone the model repo (which will ask you for your hugging face username and access token). You can find the clone link on the model page on hugging face -> three dots on the top right -> "Clone repository".
+- Then clone the model in this repo, and make sure the MODEL_NAME environment variable points to the cloned repo.
 
 To run the fine-tuning, run the following command:
 
