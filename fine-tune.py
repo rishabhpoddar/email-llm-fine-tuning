@@ -78,7 +78,6 @@ def main():
         ],
     )
     model = get_peft_model(model, lora_cfg)
-    model.print_trainable_parameters()
 
     # Dataset -> tokenised
     raw_ds = load_dataset("json", data_files="dataset.jsonl", split="train")
