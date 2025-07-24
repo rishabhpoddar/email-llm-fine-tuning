@@ -92,6 +92,7 @@ def main():
     targs = TrainingArguments(
         output_dir="model_result",
         num_train_epochs=int(os.getenv("EPOCHS")),
+        # max_steps=1, uncomment this and comment the above line for testing
         per_device_train_batch_size=int(os.getenv("BATCH_SIZE")),
         gradient_accumulation_steps=int(os.getenv("GRAD_ACCUM")),
         learning_rate=float(os.getenv("LEARNING_RATE")),
