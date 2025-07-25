@@ -6,3 +6,5 @@ fetching_state.json.tmp
 fetching_state.json
 dataset.jsonl
 model_result/
+__pycache__/
+model_result

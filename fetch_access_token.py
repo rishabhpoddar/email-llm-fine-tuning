@@ -2,6 +2,7 @@ import os.path
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 import dotenv
+from google.oauth2.credentials import Credentials
 
 dotenv.load_dotenv()
 
@@ -13,8 +14,6 @@ def main():
     creds = None
     # token.json stores the user's access and refresh tokens
     if os.path.exists("token.json"):
-        from google.oauth2.credentials import Credentials
-
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
     if not creds or not creds.valid:
