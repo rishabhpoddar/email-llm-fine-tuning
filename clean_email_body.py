@@ -94,11 +94,6 @@ def _clean_html(html: str) -> str:
     ):
         n.decompose()
 
-    # convert blockquotes to real “> ” lines
-    for bq in soup.find_all("blockquote"):
-        quoted = bq.get_text("\n", strip=True)
-        bq.replace_with("\n".join("> " + ln for ln in quoted.splitlines()))
-
     plain = soup.get_text("\n", strip=True)
     return _norm(_cut_from_header_down(plain))
 
