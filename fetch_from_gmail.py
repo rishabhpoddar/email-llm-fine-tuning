@@ -5,9 +5,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import dotenv
-from base64 import urlsafe_b64decode
-from email_reply_parser import EmailReplyParser
-from bs4 import BeautifulSoup
+from clean_email_body import get_message_body
 from google.oauth2.credentials import Credentials
 
 dotenv.load_dotenv()
@@ -76,49 +74,6 @@ class EmailThread:
 threads_dict: Dict[str, EmailThread] = {}
 
 seen_email_ids: Set[str] = set()
-
-
-def _clean_plain(text: str) -> str:
-    """Return only the new part of a plain-text message."""
-    # library handles signatures & quoting reliably
-    return EmailReplyParser.parse_reply(text).strip()
-
-
-def _clean_html(html: str) -> str:
-    """Remove quoted history from a Gmail / generic HTML body."""
-    soup = BeautifulSoup(html, "html.parser")
-
-    # common quote containers across clients
-    selectors = [
-        "blockquote",
-        "div.gmail_quote",
-        "div.gmail_extra",
-        "table.gmail_quote",
-        "div.yahoo_quoted",
-    ]
-    for sel in selectors:
-        for node in soup.select(sel):
-            node.decompose()
-
-    return soup.get_text("\n", strip=True)
-
-
-def get_message_body(message):
-    """Extract only the author’s fresh text from a Gmail message."""
-    for part in message["payload"].get("parts", [message["payload"]]):
-        mime = part["mimeType"]
-        body_data = part["body"].get("data")
-        if not body_data:
-            continue
-
-        decoded = urlsafe_b64decode(body_data).decode("utf-8", errors="ignore")
-
-        if mime == "text/plain":
-            return _clean_plain(decoded)
-        if mime == "text/html":
-            return _clean_html(decoded)
-
-    return ""  # fallback – no recognised body part
 
 
 def get_message_date(message):
