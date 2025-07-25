@@ -1,15 +1,14 @@
 import os.path
-import base64
 from googleapiclient.discovery import build
 from typing import List, Dict, Set
 import json
-import fcntl
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import dotenv
 from base64 import urlsafe_b64decode
 from email_reply_parser import EmailReplyParser
 from bs4 import BeautifulSoup
+from google.oauth2.credentials import Credentials
 
 dotenv.load_dotenv()
 
@@ -161,22 +160,17 @@ def save_state_to_json_file():
     temp_file = "fetching_state.json.tmp"
     with open(temp_file, "w") as f:
         # Use file locking to prevent concurrent writes
-        try:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            # Convert threads_dict to serializable format
-            serializable_threads = {
-                thread_id: thread.to_dict()
-                for thread_id, thread in threads_dict.items()
-            }
-            json.dump(
-                {
-                    "threads_dict": serializable_threads,
-                    "last_page_token": last_page_token,
-                },
-                f,
-            )
-        finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
+        # Convert threads_dict to serializable format
+        serializable_threads = {
+            thread_id: thread.to_dict() for thread_id, thread in threads_dict.items()
+        }
+        json.dump(
+            {
+                "threads_dict": serializable_threads,
+                "last_page_token": last_page_token,
+            },
+            f,
+        )
     # Atomic rename operation
     os.replace(temp_file, "fetching_state.json")
 
@@ -209,6 +203,10 @@ def load_state_from_json_file():
             seen_email_ids = set()
 
 
+class StopEarlyException(Exception):
+    pass
+
+
 def fetch_single_message(
     creds,
     msg_id,
@@ -230,7 +228,7 @@ def fetch_single_message(
         # used from the previous run. So this way, in the next run, after we paginate through all 100 emails of the
         # current page, and then on the next page, we encounter an email that we have already seen, then we will
         # can be sure that we have seen all emails in and before that page (assuming the BATCH SIZE has not been reduced compared to previous runs).
-        return "stop_early"  # Special return value to indicate continue
+        raise StopEarlyException()  # Special return value to indicate continue
 
     seen_email_ids.add(msg_id)
 
@@ -238,26 +236,22 @@ def fetch_single_message(
     service = build("gmail", "v1", credentials=creds)
 
     # Get full message details
-    try:
-        message = service.users().messages().get(userId="me", id=msg_id).execute()
-        # Extract thread ID, body, and date
-        thread_id = message["threadId"]
-        body = get_message_body(message)
-        date = get_message_date(message)
-        from_user = get_message_from(message)
-        subject = get_message_subject(message)
-        # Create Email object
-        email_obj = Email(
-            id=msg_id,
-            from_user=from_user,
-            body=body,
-            date=date,
-            subject=subject,
-        )
-        return (email_obj, thread_id)
-    except Exception as e:
-        print(f"Error getting message {msg_id}: {e}")
-        return None
+    message = service.users().messages().get(userId="me", id=msg_id).execute()
+    # Extract thread ID, body, and date
+    thread_id = message["threadId"]
+    body = get_message_body(message)
+    date = get_message_date(message)
+    from_user = get_message_from(message)
+    subject = get_message_subject(message)
+    # Create Email object
+    email_obj = Email(
+        id=msg_id,
+        from_user=from_user,
+        body=body,
+        date=date,
+        subject=subject,
+    )
+    return (email_obj, thread_id)
 
 
 def main():
@@ -265,8 +259,6 @@ def main():
     creds = None
     # token.json stores the user's access and refresh tokens
     if os.path.exists("token.json"):
-        from google.oauth2.credentials import Credentials
-
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
     else:
         raise Exception("Token file not found. Please run fetch_access_token.py first.")
@@ -331,16 +323,17 @@ def main():
 
                 # Process completed futures
                 for future in as_completed(future_to_msg_id):
-                    result = future.result()
-                    if result == "stop_early":
-                        print(
-                            f"Stopping early because we have already seen the past emails before."
-                        )
-                        stop_early = True
-                        break
-                    elif result is not None:  # Valid (Email object, thread_id) tuple
+                    try:
+                        result = future.result()
                         email_obj, thread_id = result
                         email_thread_pairs.append((email_obj, thread_id))
+                    except StopEarlyException:
+                        if not stop_early:
+                            # we have the above condition so that we print it out only once.
+                            print(
+                                f"Stopping early because we have already seen the past emails before."
+                            )
+                        stop_early = True
 
             # Process all successfully fetched emails
             for email_obj, thread_id in email_thread_pairs:
@@ -357,6 +350,7 @@ def main():
             print(f"Processed {total_messages_processed} messages so far...")
 
             if stop_early:
+                last_page_token = None
                 break
 
             last_page_token = results.get("nextPageToken")
