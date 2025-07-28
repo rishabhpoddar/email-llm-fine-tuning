@@ -15,9 +15,14 @@ from torch.nn.utils.rnn import pad_sequence
 
 dotenv.load_dotenv()
 
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
-torch.set_default_device("cpu")
+if torch.cuda.is_available():
+    torch.set_default_device("cuda")
+    print("✅ GPU detected:", torch.cuda.get_device_name(0))
+else:
+    os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+    os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
+    torch.set_default_device("cpu")
+    print("⚠️ GPU not available, using CPU")
 
 
 # ----------  Prompt template ----------
@@ -49,8 +54,8 @@ def main():
 
     model = AutoModelForCausalLM.from_pretrained(
         os.getenv("MODEL_NAME"),
-        torch_dtype=torch.float32,
-        device_map={"": "cpu"},  # Force CPU to avoid device mapping issues
+        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+        device_map="auto",
         trust_remote_code=True,
         low_cpu_mem_usage=True,
     )
@@ -89,7 +94,7 @@ def main():
         per_device_train_batch_size=int(os.getenv("BATCH_SIZE")),
         gradient_accumulation_steps=int(os.getenv("GRAD_ACCUM")),
         learning_rate=float(os.getenv("LEARNING_RATE")),
-        fp16=False,
+        fp16=torch.cuda.is_available(),
         logging_steps=int(os.getenv("TRAINING_LOGGING_STEPS")),
         save_strategy="steps",  # Save at regular step intervals
         save_steps=int(os.getenv("TRAINING_SAVE_STEPS")),
@@ -130,6 +135,7 @@ def main():
     )
 
     # Run the training
+    print("Trainer will use device:", trainer.model.device)
     trainer.train()
     trainer.model.save_pretrained("model_result")
     tokenizer.save_pretrained("model_result")
