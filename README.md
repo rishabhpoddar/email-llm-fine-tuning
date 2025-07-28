@@ -59,7 +59,7 @@ python create_data_set_from_fetched_emails.py
 ### Minimum requirements
 
 Minimum requirements (for Llama fine tuning):
-- 16GB GPU RAM
+- 24GB GPU RAM
 - 128GB hard disk space
 
 If you are fine-tuning a model which has gated access, you need to first go the hugging face page for that model and accept the terms and conditions. Once you have access to the model, you will have to:
