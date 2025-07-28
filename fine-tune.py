@@ -55,10 +55,12 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(
         os.getenv("MODEL_NAME"),
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-        device_map="auto",
         trust_remote_code=True,
         low_cpu_mem_usage=True,
     )
+
+    if torch.cuda.is_available():
+        model.to("cuda")
 
     # LoRA adapter
     lora_cfg = LoraConfig(
@@ -90,7 +92,7 @@ def main():
     targs = TrainingArguments(
         output_dir="model_result",
         num_train_epochs=int(os.getenv("EPOCHS")),
-        # max_steps=1, uncomment this and comment the above line for testing
+        # max_steps=1, # uncomment this and comment the above line for testing
         per_device_train_batch_size=int(os.getenv("BATCH_SIZE")),
         gradient_accumulation_steps=int(os.getenv("GRAD_ACCUM")),
         learning_rate=float(os.getenv("LEARNING_RATE")),
