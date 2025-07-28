@@ -8,10 +8,12 @@ from transformers import (
     AutoModelForCausalLM,
     TrainingArguments,
     Trainer,
+    BitsAndBytesConfig
 )
 from peft import LoraConfig, get_peft_model
 import dotenv
 from torch.nn.utils.rnn import pad_sequence
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 dotenv.load_dotenv()
 
@@ -48,15 +50,21 @@ def main():
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
 
+    # QLoRA: load base model in 4-bit (no device_map, single-GPU Trainer will handle device)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_compute_dtype=torch.float16,
+    )
     model = AutoModelForCausalLM.from_pretrained(
         os.getenv("MODEL_NAME"),
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+        quantization_config=bnb_config,
         trust_remote_code=True,
         low_cpu_mem_usage=True,
     )
-
-    if torch.cuda.is_available():
-        model.to("cuda")
+    # prepare for k-bit training (casts norms, enables input-grad trick)
+    model = prepare_model_for_kbit_training(model)
 
     # LoRA adapter
     lora_cfg = LoraConfig(
@@ -88,12 +96,13 @@ def main():
     targs = TrainingArguments(
         output_dir="model_result",
         num_train_epochs=int(os.getenv("EPOCHS")),
-        # TODO: Comment the below param
-        max_steps=1, # uncomment this and comment the above line for testing
+        # max_steps=1, # uncomment this and comment the above line for testing
         per_device_train_batch_size=int(os.getenv("BATCH_SIZE")),
         gradient_accumulation_steps=int(os.getenv("GRAD_ACCUM")),
         learning_rate=float(os.getenv("LEARNING_RATE")),
         fp16=torch.cuda.is_available(),
+        gradient_checkpointing=True,         # big memory saver on T4
+        optim="paged_adamw_8bit",            # memory-efficient optimizer
         logging_steps=int(os.getenv("TRAINING_LOGGING_STEPS")),
         save_strategy="steps",  # Save at regular step intervals
         save_steps=int(os.getenv("TRAINING_SAVE_STEPS")),
@@ -106,8 +115,8 @@ def main():
 
     def collate_fn(batch):
         # batch is a list of dicts: {"input_ids": [...], "labels": [...]}
-        input_tensors = [torch.tensor(ex["input_ids"], dtype=torch.long) for ex in batch]
-        label_tensors = [torch.tensor(ex["labels"], dtype=torch.long) for ex in batch]
+        input_tensors = [torch.tensor(ex["input_ids"], dtype=torch.long, device="cpu") for ex in batch]
+        label_tensors = [torch.tensor(ex["labels"], dtype=torch.long, device="cpu") for ex in batch]
 
         # pad to the longest in this batch
         input_ids = pad_sequence(
