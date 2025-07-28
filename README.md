@@ -108,8 +108,25 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_
 
 ### Running the fine-tuning
 
-Run the fine-tuning
+Run the fine-tuning with Lora (high mem, better quality)
+```
+python fine-tune-lora.py
+```
+
+Run the fine-tuning with QLoRA (low mem, little less quality)
 ```
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-python fine-tune.py
+python fine-tune-qlora.py
+```
+
+## 6) Inference
+
+Run the inference with Lora
+```
+python inference-lora.py
+```
+
+Run the inference with QLoRA
+```
+python inference-qlora.py
 ```
