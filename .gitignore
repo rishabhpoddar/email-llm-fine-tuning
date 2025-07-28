@@ -8,3 +8,4 @@ dataset.jsonl
 model_result/
 __pycache__/
 model_result
+Llama-3.1-8B/
