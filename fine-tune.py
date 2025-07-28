@@ -16,12 +16,8 @@ from torch.nn.utils.rnn import pad_sequence
 dotenv.load_dotenv()
 
 if torch.cuda.is_available():
-    torch.set_default_device("cuda")
     print("✅ GPU detected:", torch.cuda.get_device_name(0))
 else:
-    os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-    os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
-    torch.set_default_device("cpu")
     print("⚠️ GPU not available, using CPU")
 
 
@@ -110,9 +106,7 @@ def main():
 
     def collate_fn(batch):
         # batch is a list of dicts: {"input_ids": [...], "labels": [...]}
-        input_tensors = [
-            torch.tensor(ex["input_ids"], dtype=torch.long) for ex in batch
-        ]
+        input_tensors = [torch.tensor(ex["input_ids"], dtype=torch.long) for ex in batch]
         label_tensors = [torch.tensor(ex["labels"], dtype=torch.long) for ex in batch]
 
         # pad to the longest in this batch
