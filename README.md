@@ -110,5 +110,6 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_
 
 Run the fine-tuning
 ```
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 python fine-tune.py
 ```
