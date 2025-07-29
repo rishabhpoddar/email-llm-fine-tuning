@@ -58,7 +58,7 @@ python create_data_set_from_fetched_emails.py
 
 ### Minimum requirements
 
-Minimum requirements (for Llama fine tuning):
+Minimum requirements (for Llama 8B fine tuning with QLoRA):
 - 16GB GPU RAM
 - 128GB hard disk space
 
