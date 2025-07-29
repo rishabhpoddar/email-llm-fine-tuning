@@ -2,7 +2,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel, PeftConfig
 
-peft_model_path = "model_result"  # Path where LoRA adapter is saved
+peft_model_path = "qlora-model"
 
 # ---- Load base model in 4-bit (same as training) ----
 config = PeftConfig.from_pretrained(peft_model_path)
@@ -17,7 +17,7 @@ bnb_config = BitsAndBytesConfig(
 base_model = AutoModelForCausalLM.from_pretrained(
     config.base_model_name_or_path,
     quantization_config=bnb_config,
-    device_map="auto",      # automatically puts on GPU if available
+    device_map="auto",  # automatically puts on GPU if available
     trust_remote_code=True,
 )
 

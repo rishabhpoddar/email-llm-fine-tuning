@@ -5,7 +5,7 @@ token.json
 fetching_state.json.tmp
 fetching_state.json
 dataset.jsonl
-model_result/
 __pycache__/
-model_result
+lora-model/
+qlora-model/
 Llama-3.1-8B/

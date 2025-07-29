@@ -20,6 +20,8 @@ if torch.cuda.is_available():
 else:
     print("⚠️ GPU not available, using CPU")
 
+output_dir = "lora-model"
+
 
 # ----------  Prompt template ----------
 def make_example(example: Dict[str, str], tokenizer):
@@ -86,7 +88,7 @@ def main():
 
     # Training args
     targs = TrainingArguments(
-        output_dir="model_result",
+        output_dir=output_dir,
         num_train_epochs=int(os.getenv("EPOCHS")),
         # max_steps=1, # uncomment this and comment the above line for testing
         per_device_train_batch_size=int(os.getenv("BATCH_SIZE")),
@@ -105,7 +107,9 @@ def main():
 
     def collate_fn(batch):
         # batch is a list of dicts: {"input_ids": [...], "labels": [...]}
-        input_tensors = [torch.tensor(ex["input_ids"], dtype=torch.long) for ex in batch]
+        input_tensors = [
+            torch.tensor(ex["input_ids"], dtype=torch.long) for ex in batch
+        ]
         label_tensors = [torch.tensor(ex["labels"], dtype=torch.long) for ex in batch]
 
         # pad to the longest in this batch
@@ -133,9 +137,9 @@ def main():
     # Run the training
     print("Trainer will use device:", trainer.model.device)
     trainer.train()
-    trainer.model.save_pretrained("model_result")
-    tokenizer.save_pretrained("model_result")
-    print("LoRA adapter saved to model_result")
+    trainer.model.save_pretrained(output_dir)
+    tokenizer.save_pretrained(output_dir)
+    print(f"LoRA adapter saved to {output_dir}")
 
 
 if __name__ == "__main__":

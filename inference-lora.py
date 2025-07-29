@@ -3,7 +3,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel, PeftConfig
 
 # Path where your LoRA adapter is saved
-peft_model_path = "model_result"
+peft_model_path = "lora-model"
 
 # Load LoRA config and base model
 config = PeftConfig.from_pretrained(peft_model_path)
@@ -11,7 +11,7 @@ config = PeftConfig.from_pretrained(peft_model_path)
 base_model = AutoModelForCausalLM.from_pretrained(
     config.base_model_name_or_path,
     torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-    device_map="auto",          # puts model on GPU automatically if available
+    device_map="auto",  # puts model on GPU automatically if available
     trust_remote_code=True,
 )
 

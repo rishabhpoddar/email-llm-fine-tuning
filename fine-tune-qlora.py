@@ -8,7 +8,7 @@ from transformers import (
     AutoModelForCausalLM,
     TrainingArguments,
     Trainer,
-    BitsAndBytesConfig
+    BitsAndBytesConfig,
 )
 from peft import LoraConfig, get_peft_model
 import dotenv
@@ -21,6 +21,8 @@ if torch.cuda.is_available():
     print("✅ GPU detected:", torch.cuda.get_device_name(0))
 else:
     print("⚠️ GPU not available, using CPU")
+
+output_dir = "qlora-model"
 
 
 # ----------  Prompt template ----------
@@ -94,15 +96,15 @@ def main():
 
     # Training args
     targs = TrainingArguments(
-        output_dir="model_result",
+        output_dir=output_dir,
         num_train_epochs=int(os.getenv("EPOCHS")),
         # max_steps=1, # uncomment this and comment the above line for testing
         per_device_train_batch_size=int(os.getenv("BATCH_SIZE")),
         gradient_accumulation_steps=int(os.getenv("GRAD_ACCUM")),
         learning_rate=float(os.getenv("LEARNING_RATE")),
         fp16=torch.cuda.is_available(),
-        gradient_checkpointing=True,         # big memory saver on T4
-        optim="paged_adamw_8bit",            # memory-efficient optimizer
+        gradient_checkpointing=True,  # big memory saver on T4
+        optim="paged_adamw_8bit",  # memory-efficient optimizer
         logging_steps=int(os.getenv("TRAINING_LOGGING_STEPS")),
         save_strategy="steps",  # Save at regular step intervals
         save_steps=int(os.getenv("TRAINING_SAVE_STEPS")),
@@ -115,8 +117,13 @@ def main():
 
     def collate_fn(batch):
         # batch is a list of dicts: {"input_ids": [...], "labels": [...]}
-        input_tensors = [torch.tensor(ex["input_ids"], dtype=torch.long, device="cpu") for ex in batch]
-        label_tensors = [torch.tensor(ex["labels"], dtype=torch.long, device="cpu") for ex in batch]
+        input_tensors = [
+            torch.tensor(ex["input_ids"], dtype=torch.long, device="cpu")
+            for ex in batch
+        ]
+        label_tensors = [
+            torch.tensor(ex["labels"], dtype=torch.long, device="cpu") for ex in batch
+        ]
 
         # pad to the longest in this batch
         input_ids = pad_sequence(
@@ -143,9 +150,9 @@ def main():
     # Run the training
     print("Trainer will use device:", trainer.model.device)
     trainer.train()
-    trainer.model.save_pretrained("model_result")
-    tokenizer.save_pretrained("model_result")
-    print("LoRA adapter saved to model_result")
+    trainer.model.save_pretrained(output_dir)
+    tokenizer.save_pretrained(output_dir)
+    print(f"LoRA adapter saved to {output_dir}")
 
 
 if __name__ == "__main__":
