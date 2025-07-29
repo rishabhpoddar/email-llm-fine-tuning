@@ -183,7 +183,7 @@ def fetch_single_message(
         # used from the previous run. So this way, in the next run, after we paginate through all 100 emails of the
         # current page, and then on the next page, we encounter an email that we have already seen, then we will
         # can be sure that we have seen all emails in and before that page (assuming the BATCH SIZE has not been reduced compared to previous runs).
-        raise StopEarlyException()  # Special return value to indicate continue
+        raise StopEarlyException()
 
     seen_email_ids.add(msg_id)
 

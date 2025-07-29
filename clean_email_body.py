@@ -1,30 +1,8 @@
-# gmail_body_cleaner_v3.py  –  trim at “> On Fri, …” header
-
 import re
 import unicodedata
 from base64 import urlsafe_b64decode
 from bs4 import BeautifulSoup
 
-# ───── whitespace normalisation ───────────────────────────────
-_WS_XLAT = {
-    0x00A0: " ",
-    0x2007: " ",
-    0x202F: " ",  # NBSP family → space
-    0x200B: "",
-    0x200C: "",
-    0x200D: "",
-    0xFEFF: "",  # zero‑width → nothing
-}
-_LONG_WS = re.compile(r"[ \t]{2,}")
-
-
-def _norm(text: str) -> str:
-    text = unicodedata.normalize("NFKC", text).translate(_WS_XLAT)
-    text = _LONG_WS.sub(" ", text)
-    return "\n".join(ln.rstrip() for ln in text.splitlines()).strip()
-
-
-# ─── 0.  make _norm fail‑safe ──────────────────────────────────────────
 _WS_XLAT = {
     0x00A0: " ",
     0x2007: " ",
@@ -37,8 +15,8 @@ _WS_XLAT = {
 _LONG_WS = re.compile(r"[ \t]{2,}")
 
 
-def _norm(text: str | None) -> str:
-    """Unicode‑normalise & tidy whitespace; safe if *text* is None."""
+def _norm(text: str) -> str:
+    """Unicode-normalise & tidy whitespace; safe if *text* is None."""
     if not text:
         return ""
     text = unicodedata.normalize("NFKC", text).translate(_WS_XLAT)
