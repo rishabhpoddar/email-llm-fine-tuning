@@ -9,3 +9,4 @@ __pycache__/
 lora-model/
 qlora-model/
 Llama-3.1-8B/
+log-setup.txt
