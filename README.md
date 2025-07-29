@@ -2,6 +2,10 @@
 
 ## 1) Installation process
 
+### Requirements
+
+Need python 3.10 or higher.
+
 ### Install dependencies
 ```bash
 pip install -r requirements.txt
@@ -50,3 +54,79 @@ python create_data_set_from_fetched_emails.py
 
 - This will create a file called `dataset.jsonl` in the repo from the contents of the `fetching_state.json` file.
 
+## 5) Running the fine-tuning
+
+### Minimum requirements
+
+Minimum requirements (for Llama 8B fine tuning with QLoRA):
+- 16GB GPU RAM
+- 128GB hard disk space
+
+If you are fine-tuning a model which has gated access, you need to first go the hugging face page for that model and accept the terms and conditions. Once you have access to the model, you will have to:
+- Clone the model repo (which will ask you for your hugging face username and access token). You can find the clone link on the model page on hugging face -> three dots on the top right -> "Clone repository".
+- Then clone the model in this repo, and make sure the MODEL_NAME environment variable points to the cloned repo.
+
+### Setting up the cloud instance
+Make sure to setup the right env on the cloud instance to access the GPU.
+
+1. Check that you have a GPU instance:
+```
+lspci | grep -i nvidia
+```
+
+2. Install NVIDIA drivers:
+```
+sudo apt-get update
+sudo apt-get install -y ubuntu-drivers-common
+sudo ubuntu-drivers autoinstall
+```
+
+3. Reboot instance
+```
+sudo reboot
+```
+
+4. Verify the driver
+```
+nvidia-smi
+```
+
+5. Install PyTorch with CUDA support
+- Go to https://pytorch.org/get-started/locally/
+- Select the right OS, Pip, python, Cuda version (you can see the CUDA version from the previous command)
+- Copy the command and run it in the cloud instance
+
+6. Save the dependencies
+```
+pip freeze > requirements.txt
+```
+
+7. Check that python is able to detect the GPU
+```
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+### Running the fine-tuning
+
+Run the fine-tuning with Lora (high mem, better quality)
+```
+python fine-tune.py --method lora
+```
+
+Run the fine-tuning with QLoRA (low mem, little less quality)
+```
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+python fine-tune.py --method qlora
+```
+
+## 6) Inference
+
+Run the inference with Lora
+```
+python inference.py --method lora
+```
+
+Run the inference with QLoRA
+```
+python inference.py --method qlora
+```
